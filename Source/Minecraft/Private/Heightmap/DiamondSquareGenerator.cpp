@@ -3,15 +3,20 @@
 
 #include "Heightmap/DiamondSquareGenerator.h"
 
-void UDiamondSquareGenerator::Generate(const FDiamondSquareSettings& Settings, FDiamondSquareHeightmap& OutHeightmap)
+void DiamondSquareGenerator::Generate(const FDiamondSquareSettings& Settings, FDiamondSquareHeightmap& OutHeightmap)
 {
 	int32 Seed = FMath::Rand();
 	FRandomStream RandomStream(Seed);
 
 	float Displacement = 1.f;
-	const float Roughness = 0.5f;
 	
 	const int32 EdgeIndex = Settings.SampleSize - 1;
+
+	if (!FMath::IsPowerOfTwo(EdgeIndex))
+	{
+		UE_LOG(LogTemp, Error, TEXT("Diamond-square SampleSize must be 2^N + 1. Current size: %d"), Settings.SampleSize);
+		return;
+	}
 	
 	auto GetRandomOffset = [&RandomStream, &Displacement]()
 	{
@@ -49,9 +54,9 @@ void UDiamondSquareGenerator::Generate(const FDiamondSquareSettings& Settings, F
 		}
 
 		// Square step
-		for (int32 x = 0; x < EdgeIndex; x += HalfStepSize)
+		for (int32 x = 0; x <= EdgeIndex; x += HalfStepSize)
 		{
-			for (int32 y = (x + HalfStepSize) % StepSize; y < EdgeIndex; y += StepSize)
+			for (int32 y = (x + HalfStepSize) % StepSize; y <= EdgeIndex; y += StepSize)
 			{
 				float Value = 0.f;
 				int32 Count = 0;
@@ -88,15 +93,15 @@ void UDiamondSquareGenerator::Generate(const FDiamondSquareSettings& Settings, F
 			}
 		}
 		StepSize /= 2;
-		Displacement *= Roughness;
+		Displacement *= Settings.Roughness;
 	}
 	Normalize(OutHeightmap);
 }
 
-void UDiamondSquareGenerator::Normalize(FDiamondSquareHeightmap& Heightmap)
+void DiamondSquareGenerator::Normalize(FDiamondSquareHeightmap& Heightmap)
 {
-	float MinimumValue = MAX_flt;
-	float MaximumValue = -MIN_flt;
+	float MinimumValue = TNumericLimits<float>::Max();
+	float MaximumValue = TNumericLimits<float>::Lowest();
 
 	for (const float Value : Heightmap.Values)
 	{
@@ -122,6 +127,11 @@ void UDiamondSquareGenerator::Normalize(FDiamondSquareHeightmap& Heightmap)
 
 	for (float& Value : Heightmap.Values)
 	{
-		Value = (Value - MinimumValue) * InverseRange;
+		if (!FMath::IsFinite(Value))
+		{
+			Value = 0.0f;
+			continue;
+		}
+		Value = FMath::Clamp((Value - MinimumValue) * InverseRange, 0.f, 1.f);
 	}
 }

@@ -1,18 +1,42 @@
 ﻿// Fill out your copyright notice in the Description page of Project Settings.
 
-
 #include "Subsystems/WorldGeneratorSubsystem.h"
-
 #include "Heightmap/DiamondSquareGenerator.h"
 
-UTexture2D* UWorldGeneratorSubsystem::GenerateHeightmapTexture()
+UWorldGeneratorSubsystem* UWorldGeneratorSubsystem::Get(UWorld* WorldContext)
 {
-	FDiamondSquareSettings Settings(1025);
-	FDiamondSquareHeightmap Heightmap(Settings);
-	
-	UDiamondSquareGenerator::Generate(Settings, Heightmap);
-	
-	const int32 Size = 1025;
+	if (!WorldContext) return nullptr;
+
+	if (const UGameInstance* GI = WorldContext->GetGameInstance())
+	{
+		return GI->GetSubsystem<UWorldGeneratorSubsystem>();
+	}
+	return nullptr;
+}
+
+void UWorldGeneratorSubsystem::GenerateHeightmap(const FDiamondSquareSettings& InSettings)
+{
+	TWeakObjectPtr WeakThis(this);
+	AsyncTask(ENamedThreads::AnyBackgroundHiPriTask, [WeakThis, Settings = InSettings]()
+	{
+		
+		FDiamondSquareHeightmap Heightmap(Settings);
+		DiamondSquareGenerator::Generate(Settings, Heightmap);
+		// Return to game thread to broadcast delegate
+		AsyncTask(ENamedThreads::GameThread, [WeakThis, Heightmap = MoveTemp(Heightmap)]() mutable
+		{
+			if (UWorldGeneratorSubsystem* This = WeakThis.Get())
+			{
+				This->Heightmap = MoveTemp(Heightmap);
+				This->OnHeightmapGenerationFinished.Broadcast();
+			}
+		});
+	});
+}
+
+UTexture2D* UWorldGeneratorSubsystem::GetHeightmapAsTexture()
+{
+	const int32 Size = Heightmap.Size;
 	const int32 PixelCount = Size * Size;
 	
 	TArray<FColor> Pixels;
@@ -32,7 +56,7 @@ UTexture2D* UWorldGeneratorSubsystem::GenerateHeightmapTexture()
 		}
 	}
 
-	UTexture2D* Texture = UTexture2D::CreateTransient(Size, Size, PF_B8G8R8A8, TEXT("DiamondSquareDebugTexture"));
+	UTexture2D* Texture = UTexture2D::CreateTransient(Size, Size, PF_B8G8R8A8, TEXT("DiamondSquareTexture"));
 	
 	Texture->SRGB = false;
 	Texture->Filter = TF_Nearest;
@@ -48,6 +72,6 @@ UTexture2D* UWorldGeneratorSubsystem::GenerateHeightmapTexture()
 
 	Mip.BulkData.Unlock();
 	Texture->UpdateResource();
-	HeightmapDebugTexture = Texture;
+	HeightmapTexture = Texture;
 	return Texture;
 }

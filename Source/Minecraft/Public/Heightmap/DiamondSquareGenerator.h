@@ -3,20 +3,34 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "DiamondSquareGenerator.generated.h"
 
+USTRUCT(BlueprintType)
 struct FDiamondSquareSettings
 {
-	int32 SampleSize{ 1024 };
+	GENERATED_BODY()
 
+	UPROPERTY(BlueprintReadWrite)
+	int32 SampleSize{ 1025 };
+
+	UPROPERTY(BlueprintReadWrite)
+	float Roughness = 0.5f;
+
+	FDiamondSquareSettings() {}
 	FDiamondSquareSettings(const int32 SampleSize) : SampleSize(SampleSize) {}
 };
 
 struct FDiamondSquareHeightmap
 {
+	FDiamondSquareHeightmap() {}
+	
 	FDiamondSquareHeightmap(const FDiamondSquareSettings& Settings)
 	{
+		Size = Settings.SampleSize;
 		Values.Init(0.f, Settings.SampleSize * Settings.SampleSize);
 	}
+
+	int32 Size{ -1 };
 	
 	TArray<float> Values;
 	
@@ -30,14 +44,16 @@ struct FDiamondSquareHeightmap
 		return Values[GetIndex(X, Y)];
 	}
 
+	bool IsValid() const { return Values.Num() == Size * Size; };
+
 private:
-	static int32 GetIndex(const int32 X, const int32 Y)
+	int32 GetIndex(const int32 X, const int32 Y) const
 	{
-		return X + Y * 1024;
+		return X + Y * Size;
 	}
 };
 
-class UDiamondSquareGenerator
+class DiamondSquareGenerator
 {
 public:
 	static void Generate(const FDiamondSquareSettings& Settings, FDiamondSquareHeightmap& OutHeightmap);

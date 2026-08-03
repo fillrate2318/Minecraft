@@ -3,8 +3,11 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Heightmap/DiamondSquareGenerator.h"
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "WorldGeneratorSubsystem.generated.h"
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnHeightmapGenerationFinished);
 
 UCLASS()
 class MINECRAFT_API UWorldGeneratorSubsystem : public UGameInstanceSubsystem
@@ -12,9 +15,22 @@ class MINECRAFT_API UWorldGeneratorSubsystem : public UGameInstanceSubsystem
 	GENERATED_BODY()
 
 public:
-	UFUNCTION(BlueprintCallable)
-	UTexture2D* GenerateHeightmapTexture();
+	static UWorldGeneratorSubsystem* Get(UWorld* WorldContext);
 
-	UPROPERTY(BlueprintReadOnly, Transient, Category = "Debug")
-	TObjectPtr<UTexture2D> HeightmapDebugTexture;
+	FDiamondSquareHeightmap& GetHeightmap() { return Heightmap; }
+	
+	UFUNCTION(BlueprintCallable, Category = "Heightmap")
+	void GenerateHeightmap(const FDiamondSquareSettings& InSettings);
+
+	UFUNCTION(BlueprintCallable, Category = "Heightmap|Utils")
+	UTexture2D* GetHeightmapAsTexture();
+
+	UPROPERTY(BlueprintAssignable, Category="Callbacks")
+	FOnHeightmapGenerationFinished OnHeightmapGenerationFinished;
+	
+private:
+	FDiamondSquareHeightmap Heightmap;
+
+	UPROPERTY()
+	TObjectPtr<UTexture2D> HeightmapTexture;
 };
