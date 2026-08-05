@@ -13,22 +13,137 @@ AVoxelChunk::AVoxelChunk()
 
 	SetRootComponent(SceneRoot);
 
-	SnowISM = CreateDefaultSubobject<UInstancedStaticMeshComponent>(TEXT("SnowHISM"));
+	SnowISM = CreateDefaultSubobject<UInstancedStaticMeshComponent>(TEXT("SnowISM"));
 	SnowISM->SetupAttachment(SceneRoot);
-	SnowISM->SetMobility(EComponentMobility::Static);
+	InitializeInstancedStaticMeshComponent(SnowISM);
 
-	GrassISM = CreateDefaultSubobject<UInstancedStaticMeshComponent>(TEXT("SnowHISM"));
+	GrassISM = CreateDefaultSubobject<UInstancedStaticMeshComponent>(TEXT("GrassISM"));
 	GrassISM->SetupAttachment(SceneRoot);
-	GrassISM->SetMobility(EComponentMobility::Static);
+	InitializeInstancedStaticMeshComponent(GrassISM);
 
-	RockISM = CreateDefaultSubobject<UInstancedStaticMeshComponent>(TEXT("SnowHISM"));
+	RockISM = CreateDefaultSubobject<UInstancedStaticMeshComponent>(TEXT("RockISM"));
 	RockISM->SetupAttachment(SceneRoot);
-	RockISM->SetMobility(EComponentMobility::Static);
+	InitializeInstancedStaticMeshComponent(RockISM);
+}
+
+void AVoxelChunk::Initialize(AVoxelWorld* InVoxelWorld, const int32 InSize, const int32 InHeight,
+	const int32 InBlockSize, const FIntPoint& InCoords)
+{
+	VoxelWorld = InVoxelWorld;
+	Size = InSize;
+	Height = InHeight;
+	BlockSize = InBlockSize;
+	Coords = InCoords;
+
+	AttachToActor(VoxelWorld, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
+	const FVector RelativeLocation(Coords.X * Size * BlockSize,
+		Coords.Y * Size * BlockSize,
+		0.0f);
+	
+	SetActorRelativeLocation(RelativeLocation);
 }
 
 void AVoxelChunk::BeginPlay()
 {
 	Super::BeginPlay();
+}
+
+void AVoxelChunk::InitializeRawVoxelData(const FDiamondSquareHeightmap& Heightmap, const FVoxelWorldSettings& Settings)
+{
+	Data.Init(Size, Height);
+	SurfaceHeights.Init(
+		INDEX_NONE,
+		Size * Size);
+	
+	for (int32 x = 0; x < Size; ++x)
+	{
+		for (int32 y = 0; y < Size; ++y)
+		{
+			const int32 PosX = Coords.X * Size + x;
+			const int32 PosY = Coords.Y * Size + y;
+
+			//const float Value = Heightmap.GetValue(PosX, PosY);
+			// Smooth
+			const float Value =
+			(
+				Heightmap.GetValue(PosX, PosY) +
+				Heightmap.GetValue(PosX + 1, PosY) +
+				Heightmap.GetValue(PosX, PosY + 1) +
+				Heightmap.GetValue(PosX + 1, PosY + 1)
+			) * 0.25f;
+			const int32 PosZUnclamped =
+				FMath::RoundToInt(FMath::Lerp(static_cast<float>(Settings.MinTerrainHeight),
+					static_cast<float>(Settings.MaxTerrainHeight), Value));
+			const int32 SurfaceZ = FMath::Clamp(PosZUnclamped, 0, Height - 1);
+
+			SurfaceHeights[x + y * Size] = SurfaceZ;
+			
+			// Fill column with rock
+			for (int32 z = 0; z <= SurfaceZ; ++z)
+			{
+				Data.SetVoxel(FIntVector(x, y, z), EVoxelType::Rock);
+			}
+		}
+	}
+}
+
+void AVoxelChunk::InitializeVoxelTypes(const FVoxelWorldSettings& Settings)
+{
+	if (!VoxelWorld)
+	{
+		return;
+	}
+
+	for (int32 x = 0; x < Size; ++x)
+	{
+		for (int32 y = 0; y < Size; ++y)
+		{
+			const int32 SurfaceZ = SurfaceHeights[x + y * Size];
+
+			if (SurfaceZ == INDEX_NONE)
+			{
+				continue;
+			}
+
+			for (int32 z = 0; z <= SurfaceZ; ++z)
+			{
+				const FIntVector Pos = FIntVector(x, y, z);
+
+				if (Data.GetVoxel(Pos) == EVoxelType::Empty)
+				{
+					continue;
+				}
+
+				const FIntVector WorldPos = LocalToWorldLocation(Pos);
+				const bool bVisible = VoxelWorld->IsVoxelVisible(WorldPos);
+				EVoxelType Type = EVoxelType::Rock;
+
+				if (bVisible)
+				{
+					Type = GetVisibleVoxelType(z, Settings);
+				}
+				else
+				{
+					Type = GetInvisibleVoxelType(z, SurfaceZ, Settings);
+				}
+
+				Data.SetVoxel(Pos, Type);
+			}
+		}
+	}
+}
+
+void AVoxelChunk::InitializeMeshVisualization(UStaticMesh* Mesh, UMaterialInterface* SnowMaterial,
+                                              UMaterialInterface* GrassMaterial, UMaterialInterface* RockMaterial) const
+{
+	SnowISM->SetStaticMesh(Mesh);
+	SnowISM->SetMaterial(0, SnowMaterial);
+
+	GrassISM->SetStaticMesh(Mesh);
+	GrassISM->SetMaterial(0, GrassMaterial);
+
+	RockISM->SetStaticMesh(Mesh);
+	RockISM->SetMaterial(0, RockMaterial);
 }
 
 void AVoxelChunk::BuildInstancedMeshes() const
@@ -53,7 +168,7 @@ void AVoxelChunk::BuildInstancedMeshes() const
 	{
 		for (int32 y = 0; y < Size; ++y)
 		{
-			for (int32 z = 0; z < Size; ++z)
+			for (int32 z = 0; z < Height; ++z)
 			{
 				const FIntVector Location(x, y, z);
 				const EVoxelType VoxelType = Data.GetVoxel(Location);
@@ -70,9 +185,9 @@ void AVoxelChunk::BuildInstancedMeshes() const
 				}
 
 				// Assuming mesh pivot is at the center
-				const FVector InstanceLocation(static_cast<float>(x) + 0.5f * BlockSize,
-					static_cast<float>(y) + 0.5f * BlockSize, static_cast<float>(z) + 0.5f * BlockSize);
-
+				const FVector InstanceLocation((static_cast<float>(x) + 0.5f) * BlockSize,
+					(static_cast<float>(y) + 0.5f) * BlockSize, (static_cast<float>(z) + 0.5f) * BlockSize);
+				
 				const FTransform InstanceTransform(FRotator::ZeroRotator,
 					InstanceLocation, FVector::OneVector);
 
@@ -119,6 +234,37 @@ void AVoxelChunk::InitializeInstancedStaticMeshComponent(UInstancedStaticMeshCom
 	Component->SetGenerateOverlapEvents(false);
 	Component->SetCanEverAffectNavigation(false);
 	Component->SetCastShadow(true);
+}
+
+EVoxelType AVoxelChunk::GetVisibleVoxelType(const int32 Z, const FVoxelWorldSettings& Settings) const
+{
+	int32 SnowBorder = FMath::RandRange(Settings.SnowBorderLowerLimit, Settings.SnowBorderUpperLimit);
+	if (Z >= SnowBorder)
+	{
+		return EVoxelType::Snow;
+	}
+
+	int32 GrassBorder = FMath::RandRange(Settings.GrassBorderLowerLimit, Settings.GrassBorderUpperLimit);
+	if (Z >= GrassBorder)
+	{
+		return EVoxelType::Grass;
+	}
+	
+	return EVoxelType::Rock;
+}
+
+EVoxelType AVoxelChunk::GetInvisibleVoxelType(const int32 Z,
+	const int32 SurfaceZ, const FVoxelWorldSettings& Settings) const
+{
+	const int32 Depth = SurfaceZ - Z;
+
+	if (Depth > Settings.RockDepth)
+	{
+		return EVoxelType::Rock;
+	}
+	
+	const EVoxelType SurfaceType = GetVisibleVoxelType(Z, Settings);
+	return SurfaceType;
 }
 
 EVoxelType AVoxelChunk::GetVoxelFromWorldLocation(const FIntVector& WorldLocation) const

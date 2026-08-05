@@ -41,16 +41,20 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voxel World")
 	int32 ChunkHeight{ 128 };
 	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voxel World")
+	FVoxelWorldSettings WorldSettings;
+	
 	UPROPERTY(EditAnywhere, Category="Voxel World")
 	TSubclassOf<AVoxelChunk> ChunkClass;
-	
+
 private:
 	void ConstructFromHeightmap();
 	static int32 ConvertHeightToVoxelZ(const float HeightAlpha, int32 MinHeight, int32 MaxHeight);
-	void BuildInstances();
 
 	EVoxelType GetVoxel(const FIntVector& VoxelWorldLocation);
 	AVoxelChunk* GetVoxelChunk(const FIntPoint& Coords);
+
+	int32 WorldSize;
 	
 	UPROPERTY()
 	TMap<FIntPoint, TObjectPtr<AVoxelChunk>> Chunks;

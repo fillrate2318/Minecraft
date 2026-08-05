@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Data/VoxelData.h"
 #include "GameFramework/Actor.h"
+#include "Heightmap/DiamondSquareGenerator.h"
 #include "VoxelChunk.generated.h"
 
 class AVoxelWorld;
@@ -16,13 +17,19 @@ class MINECRAFT_API AVoxelChunk : public AActor
 
 public:
 	AVoxelChunk();
+
+	void Initialize(AVoxelWorld* InVoxelWorld, const int32 InSize, const int32 InHeight,
+		const int32 InBlockSize, const FIntPoint& InCoords);
+	void InitializeRawVoxelData(const FDiamondSquareHeightmap& Heightmap, const FVoxelWorldSettings& Settings);
+	void InitializeVoxelTypes(const FVoxelWorldSettings& Settings);
+	void InitializeMeshVisualization(UStaticMesh* Mesh, UMaterialInterface* SnowMaterial,
+		UMaterialInterface* GrassMaterial, UMaterialInterface* RockMaterial) const;
+	void BuildInstancedMeshes() const;
 	
 	EVoxelType GetVoxelFromWorldLocation(const FIntVector& WorldLocation) const;
 	
 protected:
 	virtual void BeginPlay() override;
-
-	void BuildInstancedMeshes() const;
 	
 	FIntVector LocalToWorldLocation(const FIntVector& LocalLocation) const;
 	FIntVector WorldToLocalLocation(const FIntVector& WorldLocation) const;
@@ -44,6 +51,10 @@ protected:
 
 private:
 	void InitializeInstancedStaticMeshComponent(UInstancedStaticMeshComponent* Component);
+	EVoxelType GetVisibleVoxelType(const int32 Z, const FVoxelWorldSettings& Settings) const;
+	EVoxelType GetInvisibleVoxelType(const int32 Z, const int32 SurfaceZ,
+		const FVoxelWorldSettings& Settings) const;
+
 	
 	FVoxelChunkData Data;
 	FIntPoint Coords;
@@ -53,4 +64,6 @@ private:
 	int32 Height = 128;
 
 	float BlockSize = 100.0f;
+
+	TArray<int32> SurfaceHeights;
 };

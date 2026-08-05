@@ -1,6 +1,8 @@
 ﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 #include "Voxels/VoxelWorld.h"
+
+#include "DeveloperSettings/VoxelDeveloperSettings.h"
 #include "Subsystems/WorldGeneratorSubsystem.h"
 #include "Voxels/VoxelChunk.h"
 
@@ -30,26 +32,57 @@ void AVoxelWorld::ConstructFromHeightmap()
 		return;
 	}
 	
-	constexpr int32 MinHeight = 8;
-	constexpr int32 MaxHeight = 80;
+	WorldSize = Heightmap.Size - 1;
 
-	
-	int32 Size = Heightmap.Size;
-	/*VoxelData.SetNum(Size * Size);
+	const int32 ChunkCount = WorldSize / ChunkSize;
 
-	for (int32 x = 0; x < Size; ++x)
+	const UVoxelDeveloperSettings* Settings = UVoxelDeveloperSettings::Get();
+	if (!Settings)
 	{
-		for (int32 y = 0; y < Size; ++y)
-		{
-			int32 XCoord = BlockSize * x;
-			int32 YCoord = BlockSize * y;
-			int32 ZCoord =
-				BlockSize * ConvertHeightToVoxelZ(Heightmap.GetValue(x, y), MinHeight, MaxHeight);
-			VoxelData[x + Size * y] = FTransform(FRotator::ZeroRotator, FVector(XCoord, YCoord, ZCoord));
-		}
-	}*/
+		UE_LOG(LogTemp, Error, TEXT("Voxel developer settings not found"));
+		return;
+	}
 
-	BuildInstances();
+	UStaticMesh* Mesh = Settings->BlockMesh.LoadSynchronous();
+	UMaterialInterface* SnowMaterial = Settings->SnowMaterialInstance.LoadSynchronous();
+	UMaterialInterface* GrassMaterial = Settings->GrassMaterialInstance.LoadSynchronous();
+	UMaterialInterface* RockMaterial = Settings->RockMaterialInstance.LoadSynchronous();
+	
+	// First spawn chunks and fill voxel data
+	for (int32 x = 0; x < ChunkCount; ++x)
+	{
+		for (int32 y = 0; y < ChunkCount; ++y)
+		{
+			const FIntPoint Position = FIntPoint(x, y);
+			FActorSpawnParameters SpawnParameters;
+			SpawnParameters.Owner = this;
+			SpawnParameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+			AVoxelChunk* Chunk = GetWorld()->SpawnActor<AVoxelChunk>(ChunkClass, GetActorTransform(), SpawnParameters);
+
+			if (!Chunk)
+			{
+				UE_LOG(LogTemp, Error, TEXT("Failed to spawn voxel chunk"));
+				continue;
+			}
+
+			Chunk->Initialize(this, ChunkSize, ChunkHeight, BlockSize, Position);
+			Chunk->InitializeRawVoxelData(Heightmap, WorldSettings);
+			Chunk->InitializeMeshVisualization(Mesh, SnowMaterial, GrassMaterial, RockMaterial);
+			Chunks.Add(Position, Chunk);
+		}
+	}
+
+	for (auto& Pair : Chunks)
+	{
+		Pair.Value->InitializeVoxelTypes(WorldSettings);
+	}
+	
+	// Iterate over spawned chunks and fill ISMs 
+	for (auto& Pair : Chunks)
+	{
+		Pair.Value->BuildInstancedMeshes();
+	}
 }
 
 int32 AVoxelWorld::ConvertHeightToVoxelZ(const float Height, int32 MinHeight, int32 MaxHeight)
@@ -57,11 +90,6 @@ int32 AVoxelWorld::ConvertHeightToVoxelZ(const float Height, int32 MinHeight, in
 	// Lerp clamped height between min and max values and round result
 	return FMath::RoundToInt(FMath::Lerp(static_cast<float>(MinHeight), static_cast<float>(MaxHeight),
 		FMath::Clamp(Height, 0.f, 1.f)));
-}
-
-void AVoxelWorld::BuildInstances()
-{
-	//ISM->AddInstances(VoxelData, false);
 }
 
 bool AVoxelWorld::IsVoxelVisible(const FIntVector& VoxelWorldLocation)

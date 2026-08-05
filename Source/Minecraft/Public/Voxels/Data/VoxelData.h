@@ -66,3 +66,31 @@ private:
 
 	TArray<EVoxelType> Voxels;
 };
+
+USTRUCT(BlueprintType)
+struct FVoxelWorldSettings
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere)
+	int32 MinTerrainHeight{ 8 };
+	
+	UPROPERTY(EditAnywhere)
+	int32 MaxTerrainHeight{ 80 };
+
+	UPROPERTY(EditAnywhere)
+	int32 SnowBorderUpperLimit = 65;
+
+	UPROPERTY(EditAnywhere)
+	int32 SnowBorderLowerLimit = 60;
+	
+	UPROPERTY(EditAnywhere)
+	int32 GrassBorderUpperLimit = 30;
+
+	UPROPERTY(EditAnywhere)
+	int32 GrassBorderLowerLimit = 25;
+	
+	UPROPERTY(EditAnywhere)
+	int32 RockDepth = 3;
+	
+};

@@ -41,11 +41,20 @@ struct FDiamondSquareHeightmap
 
 	float GetValue(const int32 X, const int32 Y) const
 	{
-		return Values[GetIndex(X, Y)];
+		if (IsValidIndex(X, Y))
+		{
+			return Values[GetIndex(X, Y)];
+		}
+		return 0.0f;
 	}
 
 	bool IsValid() const { return Values.Num() == Size * Size; };
 
+	bool IsValidIndex(const int32 X, const int32 Y) const
+	{
+		return Values.IsValidIndex(X + Y * Size);
+	}
+	
 private:
 	int32 GetIndex(const int32 X, const int32 Y) const
 	{
