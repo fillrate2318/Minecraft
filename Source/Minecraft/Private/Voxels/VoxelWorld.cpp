@@ -1,20 +1,12 @@
 ﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 #include "Voxels/VoxelWorld.h"
-#include "Components/InstancedStaticMeshComponent.h"
 #include "Subsystems/WorldGeneratorSubsystem.h"
+#include "Voxels/VoxelChunk.h"
 
 AVoxelWorld::AVoxelWorld()
 {
 	PrimaryActorTick.bCanEverTick = false;
-
-	SceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("SceneRoot"));
-
-	SetRootComponent(SceneRoot);
-
-	ISM = CreateDefaultSubobject<UInstancedStaticMeshComponent>(TEXT("StoneHISM"));
-	ISM->SetupAttachment(SceneRoot);
-	ISM->SetMobility(EComponentMobility::Static);
 }
 
 void AVoxelWorld::BeginPlay()
@@ -43,7 +35,7 @@ void AVoxelWorld::ConstructFromHeightmap()
 
 	
 	int32 Size = Heightmap.Size;
-	VoxelData.SetNum(Size * Size);
+	/*VoxelData.SetNum(Size * Size);
 
 	for (int32 x = 0; x < Size; ++x)
 	{
@@ -55,7 +47,7 @@ void AVoxelWorld::ConstructFromHeightmap()
 				BlockSize * ConvertHeightToVoxelZ(Heightmap.GetValue(x, y), MinHeight, MaxHeight);
 			VoxelData[x + Size * y] = FTransform(FRotator::ZeroRotator, FVector(XCoord, YCoord, ZCoord));
 		}
-	}
+	}*/
 
 	BuildInstances();
 }
@@ -69,5 +61,44 @@ int32 AVoxelWorld::ConvertHeightToVoxelZ(const float Height, int32 MinHeight, in
 
 void AVoxelWorld::BuildInstances()
 {
-	ISM->AddInstances(VoxelData, false);
+	//ISM->AddInstances(VoxelData, false);
+}
+
+bool AVoxelWorld::IsVoxelVisible(const FIntVector& VoxelWorldLocation)
+{
+	// Check whether any face of a voxel is in contact with empty space
+	for (const FIntVector& Direction : Directions)
+	{
+		const FIntVector Position = VoxelWorldLocation + Direction;
+
+		if (Position.Z < 0)
+		{
+			continue;
+		}
+
+		if (GetVoxel(Position) == EVoxelType::Empty)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+EVoxelType AVoxelWorld::GetVoxel(const FIntVector& VoxelWorldLocation)
+{
+	FIntPoint Coords(VoxelWorldLocation.X / ChunkSize, VoxelWorldLocation.Y / ChunkSize);
+	AVoxelChunk* Chunk = GetVoxelChunk(Coords);
+	
+	if (!Chunk)
+	{
+		return EVoxelType::Empty;
+	}
+
+	return Chunk->GetVoxelFromWorldLocation(VoxelWorldLocation);
+}
+
+AVoxelChunk* AVoxelWorld::GetVoxelChunk(const FIntPoint& Coords)
+{
+	const TObjectPtr<AVoxelChunk>* Found = Chunks.Find(Coords);
+	return Found ? Found->Get() : nullptr;
 }

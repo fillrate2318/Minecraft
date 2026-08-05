@@ -3,8 +3,21 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Data/VoxelData.h"
 #include "GameFramework/Actor.h"
 #include "VoxelWorld.generated.h"
+
+static const FIntVector Directions[] =
+	{
+	FIntVector( 1,  0,  0),
+	FIntVector(-1,  0,  0),
+	FIntVector( 0,  1,  0),
+	FIntVector( 0, -1,  0),
+	FIntVector( 0,  0,  1),
+	FIntVector( 0,  0, -1)
+};
+
+class AVoxelChunk;
 
 UCLASS()
 class MINECRAFT_API AVoxelWorld : public AActor
@@ -14,28 +27,32 @@ class MINECRAFT_API AVoxelWorld : public AActor
 public:
 	AVoxelWorld();
 
-	UPROPERTY(EditAnywhere, Category=("Voxel World"));
-	int32 BlockSize{ 100 };
-	
-	UPROPERTY(EditAnywhere, Category=("Voxel World"));
-	int32 ChunkSize{ 32 };
+	bool IsVoxelVisible(const FIntVector& VoxelWorldLocation);
 	
 protected:
 	virtual void BeginPlay() override;
 
+	UPROPERTY(EditAnywhere, Category="Voxel World");
+	int32 BlockSize{ 100 };
 	
+	UPROPERTY(EditAnywhere, Category="Voxel World");
+	int32 ChunkSize{ 32 };
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voxel World")
+	int32 ChunkHeight{ 128 };
 	
-	UPROPERTY(VisibleAnywhere)
-	TObjectPtr<USceneComponent> SceneRoot;
-	
-	UPROPERTY(VisibleAnywhere)
-	TObjectPtr<UInstancedStaticMeshComponent> ISM;
+	UPROPERTY(EditAnywhere, Category="Voxel World")
+	TSubclassOf<AVoxelChunk> ChunkClass;
 	
 private:
 	void ConstructFromHeightmap();
 	static int32 ConvertHeightToVoxelZ(const float HeightAlpha, int32 MinHeight, int32 MaxHeight);
 	void BuildInstances();
+
+	EVoxelType GetVoxel(const FIntVector& VoxelWorldLocation);
+	AVoxelChunk* GetVoxelChunk(const FIntPoint& Coords);
 	
-	//TArray<FIntVector> VoxelData;
-	TArray<FTransform> VoxelData;
+	UPROPERTY()
+	TMap<FIntPoint, TObjectPtr<AVoxelChunk>> Chunks;
+	
 };
