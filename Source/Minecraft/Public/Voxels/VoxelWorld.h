@@ -7,6 +7,8 @@
 #include "GameFramework/Actor.h"
 #include "VoxelWorld.generated.h"
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnVoxelWorldReady);
+
 static const FIntVector Directions[] =
 	{
 	FIntVector( 1,  0,  0),
@@ -28,6 +30,11 @@ public:
 	AVoxelWorld();
 
 	bool IsVoxelVisible(const FIntVector& VoxelWorldLocation);
+	bool IsWorldReady() const { return bWorldReady; }
+	bool TryGetSpawnTransform(float VerticalClearance, FTransform& OutTransform) const;
+
+	UPROPERTY(BlueprintAssignable, Category="Voxel World|Callbacks")
+	FOnVoxelWorldReady OnWorldReady;
 	
 protected:
 	virtual void BeginPlay() override;
@@ -49,12 +56,14 @@ protected:
 
 private:
 	void ConstructFromHeightmap();
+	void MarkWorldReady();
 	static int32 ConvertHeightToVoxelZ(const float HeightAlpha, int32 MinHeight, int32 MaxHeight);
 
 	EVoxelType GetVoxel(const FIntVector& VoxelWorldLocation);
 	AVoxelChunk* GetVoxelChunk(const FIntPoint& Coords);
 
-	int32 WorldSize;
+	int32 WorldSize{ 0 };
+	bool bWorldReady{ false };
 	
 	UPROPERTY()
 	TMap<FIntPoint, TObjectPtr<AVoxelChunk>> Chunks;

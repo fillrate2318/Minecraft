@@ -5,6 +5,7 @@
 #include "DeveloperSettings/VoxelDeveloperSettings.h"
 #include "Subsystems/WorldGeneratorSubsystem.h"
 #include "Voxels/VoxelChunk.h"
+#include "TimerManager.h"
 
 AVoxelWorld::AVoxelWorld()
 {
@@ -83,6 +84,50 @@ void AVoxelWorld::ConstructFromHeightmap()
 	{
 		Pair.Value->BuildInstancedMeshes();
 	}
+
+	if (!Chunks.IsEmpty())
+	{
+		GetWorldTimerManager().SetTimerForNextTick(this, &AVoxelWorld::MarkWorldReady);
+	}
+}
+
+void AVoxelWorld::MarkWorldReady()
+{
+	bWorldReady = true;
+	OnWorldReady.Broadcast();
+}
+
+bool AVoxelWorld::TryGetSpawnTransform(const float VerticalClearance, FTransform& OutTransform) const
+{
+	if (!bWorldReady || WorldSize <= 0)
+	{
+		return false;
+	}
+
+	const UWorldGeneratorSubsystem* WGS = UWorldGeneratorSubsystem::Get(GetWorld());
+	if (!WGS)
+	{
+		return false;
+	}
+
+	const FDiamondSquareHeightmap& Heightmap = WGS->GetHeightmap();
+	const int32 VoxelX = FMath::Clamp(WorldSize / 2, 0, WorldSize - 1);
+	const int32 VoxelY = FMath::Clamp(WorldSize / 2, 0, WorldSize - 1);
+	const float HeightAlpha =
+		(Heightmap.GetValue(VoxelX, VoxelY) +
+		 Heightmap.GetValue(VoxelX + 1, VoxelY) +
+		 Heightmap.GetValue(VoxelX, VoxelY + 1) +
+		 Heightmap.GetValue(VoxelX + 1, VoxelY + 1)) * 0.25f;
+	const int32 SurfaceZ = FMath::Clamp(
+		ConvertHeightToVoxelZ(HeightAlpha, WorldSettings.MinTerrainHeight, WorldSettings.MaxTerrainHeight),
+		0, ChunkHeight - 1);
+	const FVector LocalLocation(
+		(static_cast<float>(VoxelX) + 0.5f) * BlockSize,
+		(static_cast<float>(VoxelY) + 0.5f) * BlockSize,
+		(static_cast<float>(SurfaceZ) + 1.0f) * BlockSize + VerticalClearance);
+
+	OutTransform = FTransform(GetActorRotation(), GetActorTransform().TransformPosition(LocalLocation));
+	return true;
 }
 
 int32 AVoxelWorld::ConvertHeightToVoxelZ(const float Height, int32 MinHeight, int32 MaxHeight)

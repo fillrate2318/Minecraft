@@ -18,6 +18,7 @@ public:
 	static UWorldGeneratorSubsystem* Get(UWorld* WorldContext);
 
 	FDiamondSquareHeightmap& GetHeightmap() { return Heightmap; }
+	const FDiamondSquareHeightmap& GetHeightmap() const { return Heightmap; }
 	
 	UFUNCTION(BlueprintCallable, Category = "Heightmap")
 	void GenerateHeightmap(const FDiamondSquareSettings& InSettings);
