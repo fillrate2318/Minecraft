@@ -31,6 +31,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Voxel Inventory")
 	bool SelectVoxelType(EVoxelType VoxelType);
 
+	UFUNCTION(BlueprintCallable, Category="Voxel Inventory")
+	bool Increment();
+
+	UFUNCTION(BlueprintCallable, Category="Voxel Inventory")
+	bool Decrement();
+
 	UFUNCTION(BlueprintPure, Category="Voxel Inventory")
 	EVoxelType GetSelectedVoxelType() const { return SelectedVoxelType; }
 

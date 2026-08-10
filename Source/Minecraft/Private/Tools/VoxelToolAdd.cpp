@@ -7,11 +7,6 @@
 
 bool UVoxelToolAdd::ExecuteTool_Implementation(const FHitResult& HitResult)
 {
-	if (!HitResult.bBlockingHit)
-	{
-		return false;
-	}
-
 	UVoxelInventorySubsystem* Inventory = GetInventory();
 	if (!Inventory)
 	{
@@ -30,8 +25,17 @@ bool UVoxelToolAdd::ExecuteTool_Implementation(const FHitResult& HitResult)
 	{
 		return false;
 	}
-
-	const FVector AddLocation = HitResult.ImpactPoint + HitResult.ImpactNormal * SurfaceOffset;
+	
+	FVector AddLocation;
+	if (HitResult.bBlockingHit)
+	{
+		AddLocation = HitResult.ImpactPoint + HitResult.ImpactNormal * SurfaceOffset;
+	}
+	else
+	{
+		AddLocation = HitResult.TraceEnd;
+	}
+	
 	if (!IVoxelEditingInterface::Execute_AddVoxel(GameMode, AddLocation, VoxelType))
 	{
 		return false;

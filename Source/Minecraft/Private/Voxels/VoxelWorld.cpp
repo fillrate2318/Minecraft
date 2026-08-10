@@ -2,6 +2,8 @@
 
 #include "Voxels/VoxelWorld.h"
 
+#include "Components/BoxComponent.h"
+#include "Components/SceneComponent.h"
 #include "DeveloperSettings/VoxelDeveloperSettings.h"
 #include "Subsystems/WorldGeneratorSubsystem.h"
 #include "Voxels/VoxelChunk.h"
@@ -10,6 +12,28 @@
 AVoxelWorld::AVoxelWorld()
 {
 	PrimaryActorTick.bCanEverTick = false;
+
+	SceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("SceneRoot"));
+	SetRootComponent(SceneRoot);
+
+	static const FName WallNames[] =
+	{
+		TEXT("MinXBoundary"),
+		TEXT("MaxXBoundary"),
+		TEXT("MinYBoundary"),
+		TEXT("MaxYBoundary")
+	};
+
+	for (const FName WallName : WallNames)
+	{
+		UBoxComponent* BoundaryWall = CreateDefaultSubobject<UBoxComponent>(WallName);
+		BoundaryWall->SetupAttachment(SceneRoot);
+		BoundaryWall->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+		BoundaryWall->SetCollisionResponseToAllChannels(ECR_Ignore);
+		BoundaryWall->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
+		BoundaryWall->SetGenerateOverlapEvents(false);
+		BoundaryWalls.Add(BoundaryWall);
+	}
 }
 
 void AVoxelWorld::BeginPlay()
@@ -34,6 +58,7 @@ void AVoxelWorld::ConstructFromHeightmap()
 	}
 	
 	WorldSize = Heightmap.Size - 1;
+	ConfigureBoundaryCollision();
 
 	const int32 ChunkCount = WorldSize / ChunkSize;
 
@@ -89,6 +114,32 @@ void AVoxelWorld::ConstructFromHeightmap()
 	{
 		GetWorldTimerManager().SetTimerForNextTick(this, &AVoxelWorld::MarkWorldReady);
 	}
+}
+
+void AVoxelWorld::ConfigureBoundaryCollision()
+{
+	if (BoundaryWalls.Num() != 4 || WorldSize <= 0 || BlockSize <= 0 || ChunkHeight <= 0)
+	{
+		return;
+	}
+
+	const float WorldExtent = static_cast<float>(WorldSize * BlockSize);
+	const float WorldHalfExtent = WorldExtent * 0.5f;
+	const float WallThickness = static_cast<float>(BlockSize);
+	const float WallHalfThickness = WallThickness * 0.5f;
+	const float WallHalfHeight = static_cast<float>(ChunkHeight * BlockSize) * 0.5f;
+
+	BoundaryWalls[0]->SetBoxExtent(FVector(WallHalfThickness, WorldHalfExtent, WallHalfHeight));
+	BoundaryWalls[0]->SetRelativeLocation(FVector(-WallHalfThickness, WorldHalfExtent, WallHalfHeight));
+
+	BoundaryWalls[1]->SetBoxExtent(FVector(WallHalfThickness, WorldHalfExtent, WallHalfHeight));
+	BoundaryWalls[1]->SetRelativeLocation(FVector(WorldExtent + WallHalfThickness, WorldHalfExtent, WallHalfHeight));
+
+	BoundaryWalls[2]->SetBoxExtent(FVector(WorldHalfExtent, WallHalfThickness, WallHalfHeight));
+	BoundaryWalls[2]->SetRelativeLocation(FVector(WorldHalfExtent, -WallHalfThickness, WallHalfHeight));
+
+	BoundaryWalls[3]->SetBoxExtent(FVector(WorldHalfExtent, WallHalfThickness, WallHalfHeight));
+	BoundaryWalls[3]->SetRelativeLocation(FVector(WorldHalfExtent, WorldExtent + WallHalfThickness, WallHalfHeight));
 }
 
 void AVoxelWorld::MarkWorldReady()
@@ -157,6 +208,7 @@ bool AVoxelWorld::RemoveVoxelAtWorldLocation(const FVector& WorldLocation)
 {
 	FIntVector VoxelLocation;
 	return WorldLocationToVoxel(WorldLocation, VoxelLocation) &&
+		VoxelLocation.Z > 0 &&
 		SetVoxel(VoxelLocation, EVoxelType::Empty);
 }
 

@@ -22,6 +22,8 @@ static const FIntVector Directions[] =
 };
 
 class AVoxelChunk;
+class UBoxComponent;
+class USceneComponent;
 
 UCLASS()
 class MINECRAFT_API AVoxelWorld : public AActor
@@ -73,6 +75,7 @@ protected:
 
 private:
 	void ConstructFromHeightmap();
+	void ConfigureBoundaryCollision();
 	void MarkWorldReady();
 	static int32 ConvertHeightToVoxelZ(const float HeightAlpha, int32 MinHeight, int32 MaxHeight);
 
@@ -82,6 +85,12 @@ private:
 
 	int32 WorldSize{ 0 };
 	bool bWorldReady{ false };
+
+	UPROPERTY(VisibleAnywhere, Category="Voxel World|Collision")
+	TObjectPtr<USceneComponent> SceneRoot;
+
+	UPROPERTY(VisibleAnywhere, Category="Voxel World|Collision")
+	TArray<TObjectPtr<UBoxComponent>> BoundaryWalls;
 	
 	UPROPERTY()
 	TMap<FIntPoint, TObjectPtr<AVoxelChunk>> Chunks;

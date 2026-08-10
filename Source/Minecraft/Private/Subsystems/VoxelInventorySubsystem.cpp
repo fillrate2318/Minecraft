@@ -52,3 +52,33 @@ bool UVoxelInventorySubsystem::SelectVoxelType(const EVoxelType VoxelType)
 
 	return true;
 }
+
+bool UVoxelInventorySubsystem::Increment()
+{
+	switch (SelectedVoxelType)
+	{
+	case EVoxelType::Snow:
+		return SelectVoxelType(EVoxelType::Grass);
+	case EVoxelType::Grass:
+		return SelectVoxelType(EVoxelType::Rock);
+	case EVoxelType::Rock:
+		return SelectVoxelType(EVoxelType::Snow);
+	default:
+		return SelectVoxelType(EVoxelType::Snow);
+	}
+}
+
+bool UVoxelInventorySubsystem::Decrement()
+{
+	switch (SelectedVoxelType)
+	{
+	case EVoxelType::Snow:
+		return SelectVoxelType(EVoxelType::Rock);
+	case EVoxelType::Grass:
+		return SelectVoxelType(EVoxelType::Snow);
+	case EVoxelType::Rock:
+		return SelectVoxelType(EVoxelType::Grass);
+	default:
+		return SelectVoxelType(EVoxelType::Rock);
+	}
+}
