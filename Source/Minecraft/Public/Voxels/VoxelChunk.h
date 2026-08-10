@@ -24,9 +24,11 @@ public:
 	void InitializeVoxelTypes(const FVoxelWorldSettings& Settings);
 	void InitializeMeshVisualization(UStaticMesh* Mesh, UMaterialInterface* SnowMaterial,
 		UMaterialInterface* GrassMaterial, UMaterialInterface* RockMaterial) const;
-	void BuildInstancedMeshes() const;
+	void BuildInstancedMeshes();
 	
 	EVoxelType GetVoxelFromWorldLocation(const FIntVector& WorldLocation) const;
+	bool SetVoxelFromWorldLocation(const FIntVector& WorldLocation, EVoxelType VoxelType);
+	void RefreshVoxelInstance(const FIntVector& WorldLocation);
 	
 protected:
 	virtual void BeginPlay() override;
@@ -50,7 +52,17 @@ protected:
 	TObjectPtr<AVoxelWorld> VoxelWorld;
 
 private:
+	struct FVoxelInstanceHandle
+	{
+		EVoxelType Type{ EVoxelType::Empty };
+		int32 Index{ INDEX_NONE };
+	};
+
 	void InitializeInstancedStaticMeshComponent(UInstancedStaticMeshComponent* Component);
+	void AddVoxelInstance(const FIntVector& LocalLocation, EVoxelType VoxelType);
+	void RemoveVoxelInstance(const FIntVector& LocalLocation);
+	UInstancedStaticMeshComponent* GetInstancedMesh(EVoxelType VoxelType) const;
+	TArray<FIntVector>* GetInstanceLocations(EVoxelType VoxelType);
 	EVoxelType GetVisibleVoxelType(const int32 Z, const FVoxelWorldSettings& Settings) const;
 	EVoxelType GetInvisibleVoxelType(const int32 Z, const int32 SurfaceZ,
 		const FVoxelWorldSettings& Settings) const;
@@ -66,4 +78,8 @@ private:
 	float BlockSize = 100.0f;
 
 	TArray<int32> SurfaceHeights;
+	TMap<FIntVector, FVoxelInstanceHandle> VoxelInstances;
+	TArray<FIntVector> SnowInstanceLocations;
+	TArray<FIntVector> GrassInstanceLocations;
+	TArray<FIntVector> RockInstanceLocations;
 };

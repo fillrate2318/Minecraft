@@ -6,6 +6,21 @@
 #include "GameFramework/PlayerController.h"
 #include "Voxels/VoxelWorld.h"
 
+bool AVoxelGameMode::AddVoxel_Implementation(const FVector& WorldLocation, const EVoxelType VoxelType)
+{
+	return VoxelWorld && VoxelWorld->AddVoxelAtWorldLocation(WorldLocation, VoxelType);
+}
+
+bool AVoxelGameMode::RemoveVoxel_Implementation(const FVector& WorldLocation)
+{
+	return VoxelWorld && VoxelWorld->RemoveVoxelAtWorldLocation(WorldLocation);
+}
+
+EVoxelType AVoxelGameMode::GetVoxelType_Implementation(const FVector& WorldLocation)
+{
+	return VoxelWorld ? VoxelWorld->GetVoxelAtWorldLocation(WorldLocation) : EVoxelType::Empty;
+}
+
 void AVoxelGameMode::BeginPlay()
 {
 	Super::BeginPlay();

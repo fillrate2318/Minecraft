@@ -146,23 +146,34 @@ void AVoxelChunk::InitializeMeshVisualization(UStaticMesh* Mesh, UMaterialInterf
 	RockISM->SetMaterial(0, RockMaterial);
 }
 
-void AVoxelChunk::BuildInstancedMeshes() const
+void AVoxelChunk::BuildInstancedMeshes()
 {
 	if (!VoxelWorld)
 	{
 		return;
 	}
 
+	SnowISM->ClearInstances();
+	GrassISM->ClearInstances();
+	RockISM->ClearInstances();
+	VoxelInstances.Reset();
+	SnowInstanceLocations.Reset();
+	GrassInstanceLocations.Reset();
+	RockInstanceLocations.Reset();
+
 	const int32 SurfaceBlocks = Size * Size;
 	
 	TArray<FTransform> SnowTransforms;
 	SnowTransforms.Reserve(SurfaceBlocks);
+	SnowInstanceLocations.Reserve(SurfaceBlocks);
 	
 	TArray<FTransform> GrassTransforms;
 	GrassTransforms.Reserve(SurfaceBlocks);
+	GrassInstanceLocations.Reserve(SurfaceBlocks);
 	
 	TArray<FTransform> RockTransforms;
 	RockTransforms.Reserve(SurfaceBlocks);
+	RockInstanceLocations.Reserve(SurfaceBlocks);
 
 	for (int32 x = 0; x < Size; ++x)
 	{
@@ -195,12 +206,15 @@ void AVoxelChunk::BuildInstancedMeshes() const
 				{
 					case EVoxelType::Snow:
 						SnowTransforms.Add(InstanceTransform);
+						SnowInstanceLocations.Add(Location);
 						break;
 					case EVoxelType::Grass:
 						GrassTransforms.Add(InstanceTransform);
+						GrassInstanceLocations.Add(Location);
 						break;
 					case EVoxelType::Rock:
 						RockTransforms.Add(InstanceTransform);
+						RockInstanceLocations.Add(Location);
 						break;
 					default:
 						break;
@@ -212,6 +226,132 @@ void AVoxelChunk::BuildInstancedMeshes() const
 	SnowISM->AddInstances(SnowTransforms, false, false, false);
 	GrassISM->AddInstances(GrassTransforms, false, false, false);
 	RockISM->AddInstances(RockTransforms, false, false, false);
+
+	for (int32 Index = 0; Index < SnowInstanceLocations.Num(); ++Index)
+	{
+		VoxelInstances.Add(SnowInstanceLocations[Index], { EVoxelType::Snow, Index });
+	}
+	for (int32 Index = 0; Index < GrassInstanceLocations.Num(); ++Index)
+	{
+		VoxelInstances.Add(GrassInstanceLocations[Index], { EVoxelType::Grass, Index });
+	}
+	for (int32 Index = 0; Index < RockInstanceLocations.Num(); ++Index)
+	{
+		VoxelInstances.Add(RockInstanceLocations[Index], { EVoxelType::Rock, Index });
+	}
+}
+
+void AVoxelChunk::RefreshVoxelInstance(const FIntVector& WorldLocation)
+{
+	const FIntVector LocalLocation = WorldToLocalLocation(WorldLocation);
+	if (!Data.IsValidVoxel(LocalLocation) || !VoxelWorld)
+	{
+		return;
+	}
+
+	const EVoxelType VoxelType = Data.GetVoxel(LocalLocation);
+	const bool bShouldHaveInstance = VoxelType != EVoxelType::Empty &&
+		VoxelWorld->IsVoxelVisible(WorldLocation);
+	const FVoxelInstanceHandle* ExistingHandle = VoxelInstances.Find(LocalLocation);
+
+	if (!bShouldHaveInstance)
+	{
+		if (ExistingHandle)
+		{
+			RemoveVoxelInstance(LocalLocation);
+		}
+		return;
+	}
+
+	if (!ExistingHandle)
+	{
+		AddVoxelInstance(LocalLocation, VoxelType);
+	}
+	else if (ExistingHandle->Type != VoxelType)
+	{
+		RemoveVoxelInstance(LocalLocation);
+		AddVoxelInstance(LocalLocation, VoxelType);
+	}
+}
+
+void AVoxelChunk::AddVoxelInstance(const FIntVector& LocalLocation, const EVoxelType VoxelType)
+{
+	UInstancedStaticMeshComponent* Component = GetInstancedMesh(VoxelType);
+	TArray<FIntVector>* InstanceLocations = GetInstanceLocations(VoxelType);
+	if (!Component || !InstanceLocations)
+	{
+		return;
+	}
+
+	const FVector InstanceLocation(
+		(static_cast<float>(LocalLocation.X) + 0.5f) * BlockSize,
+		(static_cast<float>(LocalLocation.Y) + 0.5f) * BlockSize,
+		(static_cast<float>(LocalLocation.Z) + 0.5f) * BlockSize);
+	const int32 InstanceIndex = Component->AddInstance(
+		FTransform(FRotator::ZeroRotator, InstanceLocation, FVector::OneVector));
+
+	if (InstanceIndex != INDEX_NONE)
+	{
+		InstanceLocations->Add(LocalLocation);
+		VoxelInstances.Add(LocalLocation, { VoxelType, InstanceIndex });
+	}
+}
+
+void AVoxelChunk::RemoveVoxelInstance(const FIntVector& LocalLocation)
+{
+	const FVoxelInstanceHandle* FoundHandle = VoxelInstances.Find(LocalLocation);
+	if (!FoundHandle)
+	{
+		return;
+	}
+
+	const FVoxelInstanceHandle Handle = *FoundHandle;
+	UInstancedStaticMeshComponent* Component = GetInstancedMesh(Handle.Type);
+	TArray<FIntVector>* InstanceLocations = GetInstanceLocations(Handle.Type);
+	if (!Component || !InstanceLocations || !InstanceLocations->IsValidIndex(Handle.Index))
+	{
+		return;
+	}
+
+	const int32 LastIndex = InstanceLocations->Num() - 1;
+	const FIntVector SwappedLocation = (*InstanceLocations)[LastIndex];
+	if (!Component->RemoveInstance(Handle.Index))
+	{
+		return;
+	}
+
+	InstanceLocations->RemoveAtSwap(Handle.Index, 1, EAllowShrinking::No);
+	VoxelInstances.Remove(LocalLocation);
+
+	if (Handle.Index != LastIndex)
+	{
+		if (FVoxelInstanceHandle* SwappedHandle = VoxelInstances.Find(SwappedLocation))
+		{
+			SwappedHandle->Index = Handle.Index;
+		}
+	}
+}
+
+UInstancedStaticMeshComponent* AVoxelChunk::GetInstancedMesh(const EVoxelType VoxelType) const
+{
+	switch (VoxelType)
+	{
+		case EVoxelType::Snow: return SnowISM;
+		case EVoxelType::Grass: return GrassISM;
+		case EVoxelType::Rock: return RockISM;
+		default: return nullptr;
+	}
+}
+
+TArray<FIntVector>* AVoxelChunk::GetInstanceLocations(const EVoxelType VoxelType)
+{
+	switch (VoxelType)
+	{
+		case EVoxelType::Snow: return &SnowInstanceLocations;
+		case EVoxelType::Grass: return &GrassInstanceLocations;
+		case EVoxelType::Rock: return &RockInstanceLocations;
+		default: return nullptr;
+	}
 }
 
 FIntVector AVoxelChunk::LocalToWorldLocation(const FIntVector& LocalLocation) const
@@ -227,6 +367,7 @@ FIntVector AVoxelChunk::WorldToLocalLocation(const FIntVector& WorldLocation) co
 
 void AVoxelChunk::InitializeInstancedStaticMeshComponent(UInstancedStaticMeshComponent* Component)
 {
+	Component->SetRemoveSwap();
 	Component->SetMobility(EComponentMobility::Movable);
 	Component->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 	Component->SetCollisionProfileName(UCollisionProfile::BlockAll_ProfileName);
@@ -271,4 +412,15 @@ EVoxelType AVoxelChunk::GetVoxelFromWorldLocation(const FIntVector& WorldLocatio
 {
 	FIntVector LocalLocation = WorldToLocalLocation(WorldLocation);
 	return Data.GetVoxel(LocalLocation);
+}
+
+bool AVoxelChunk::SetVoxelFromWorldLocation(const FIntVector& WorldLocation, const EVoxelType VoxelType)
+{
+	const FIntVector LocalLocation = WorldToLocalLocation(WorldLocation);
+	if (!Data.IsValidVoxel(LocalLocation) || Data.GetVoxel(LocalLocation) == VoxelType)
+	{
+		return false;
+	}
+
+	return Data.SetVoxel(LocalLocation, VoxelType);
 }

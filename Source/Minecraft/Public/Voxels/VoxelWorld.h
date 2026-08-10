@@ -8,6 +8,8 @@
 #include "VoxelWorld.generated.h"
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnVoxelWorldReady);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(
+	FOnVoxelChanged, const FIntVector&, VoxelLocation, EVoxelType, VoxelType);
 
 static const FIntVector Directions[] =
 	{
@@ -29,12 +31,27 @@ class MINECRAFT_API AVoxelWorld : public AActor
 public:
 	AVoxelWorld();
 
-	bool IsVoxelVisible(const FIntVector& VoxelWorldLocation);
+	bool IsVoxelVisible(const FIntVector& VoxelWorldLocation) const;
 	bool IsWorldReady() const { return bWorldReady; }
 	bool TryGetSpawnTransform(float VerticalClearance, FTransform& OutTransform) const;
 
+	UFUNCTION(BlueprintPure, Category="Voxel World|Editing")
+	bool WorldLocationToVoxel(const FVector& WorldLocation, FIntVector& OutVoxelLocation) const;
+
+	UFUNCTION(BlueprintCallable, Category="Voxel World|Editing")
+	bool RemoveVoxelAtWorldLocation(const FVector& WorldLocation);
+
+	UFUNCTION(BlueprintCallable, Category="Voxel World|Editing")
+	bool AddVoxelAtWorldLocation(const FVector& WorldLocation, EVoxelType VoxelType);
+
+	UFUNCTION(BlueprintPure, Category="Voxel World|Editing")
+	EVoxelType GetVoxelAtWorldLocation(const FVector& WorldLocation) const;
+
 	UPROPERTY(BlueprintAssignable, Category="Voxel World|Callbacks")
 	FOnVoxelWorldReady OnWorldReady;
+
+	UPROPERTY(BlueprintAssignable, Category="Voxel World|Callbacks")
+	FOnVoxelChanged OnVoxelChanged;
 	
 protected:
 	virtual void BeginPlay() override;
@@ -59,8 +76,9 @@ private:
 	void MarkWorldReady();
 	static int32 ConvertHeightToVoxelZ(const float HeightAlpha, int32 MinHeight, int32 MaxHeight);
 
-	EVoxelType GetVoxel(const FIntVector& VoxelWorldLocation);
-	AVoxelChunk* GetVoxelChunk(const FIntPoint& Coords);
+	EVoxelType GetVoxel(const FIntVector& VoxelWorldLocation) const;
+	AVoxelChunk* GetVoxelChunk(const FIntPoint& Coords) const;
+	bool SetVoxel(const FIntVector& VoxelWorldLocation, EVoxelType VoxelType);
 
 	int32 WorldSize{ 0 };
 	bool bWorldReady{ false };

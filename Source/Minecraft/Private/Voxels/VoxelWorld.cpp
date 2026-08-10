@@ -130,6 +130,55 @@ bool AVoxelWorld::TryGetSpawnTransform(const float VerticalClearance, FTransform
 	return true;
 }
 
+bool AVoxelWorld::WorldLocationToVoxel(const FVector& WorldLocation, FIntVector& OutVoxelLocation) const
+{
+	if (!bWorldReady || BlockSize <= 0)
+	{
+		return false;
+	}
+
+	const FVector LocalLocation = GetActorTransform().InverseTransformPosition(WorldLocation);
+	OutVoxelLocation = FIntVector(
+		FMath::FloorToInt(LocalLocation.X / BlockSize),
+		FMath::FloorToInt(LocalLocation.Y / BlockSize),
+		FMath::FloorToInt(LocalLocation.Z / BlockSize));
+
+	if (OutVoxelLocation.X < 0 || OutVoxelLocation.Y < 0 || OutVoxelLocation.Z < 0 ||
+		OutVoxelLocation.Z >= ChunkHeight)
+	{
+		return false;
+	}
+
+	return GetVoxelChunk(
+		FIntPoint(OutVoxelLocation.X / ChunkSize, OutVoxelLocation.Y / ChunkSize)) != nullptr;
+}
+
+bool AVoxelWorld::RemoveVoxelAtWorldLocation(const FVector& WorldLocation)
+{
+	FIntVector VoxelLocation;
+	return WorldLocationToVoxel(WorldLocation, VoxelLocation) &&
+		SetVoxel(VoxelLocation, EVoxelType::Empty);
+}
+
+bool AVoxelWorld::AddVoxelAtWorldLocation(const FVector& WorldLocation, const EVoxelType VoxelType)
+{
+	if (VoxelType == EVoxelType::Empty)
+	{
+		return false;
+	}
+
+	FIntVector VoxelLocation;
+	return WorldLocationToVoxel(WorldLocation, VoxelLocation) && SetVoxel(VoxelLocation, VoxelType);
+}
+
+EVoxelType AVoxelWorld::GetVoxelAtWorldLocation(const FVector& WorldLocation) const
+{
+	FIntVector VoxelLocation;
+	return WorldLocationToVoxel(WorldLocation, VoxelLocation)
+		? GetVoxel(VoxelLocation)
+		: EVoxelType::Empty;
+}
+
 int32 AVoxelWorld::ConvertHeightToVoxelZ(const float Height, int32 MinHeight, int32 MaxHeight)
 {
 	// Lerp clamped height between min and max values and round result
@@ -137,7 +186,7 @@ int32 AVoxelWorld::ConvertHeightToVoxelZ(const float Height, int32 MinHeight, in
 		FMath::Clamp(Height, 0.f, 1.f)));
 }
 
-bool AVoxelWorld::IsVoxelVisible(const FIntVector& VoxelWorldLocation)
+bool AVoxelWorld::IsVoxelVisible(const FIntVector& VoxelWorldLocation) const
 {
 	// Check whether any face of a voxel is in contact with empty space
 	for (const FIntVector& Direction : Directions)
@@ -157,7 +206,7 @@ bool AVoxelWorld::IsVoxelVisible(const FIntVector& VoxelWorldLocation)
 	return false;
 }
 
-EVoxelType AVoxelWorld::GetVoxel(const FIntVector& VoxelWorldLocation)
+EVoxelType AVoxelWorld::GetVoxel(const FIntVector& VoxelWorldLocation) const
 {
 	FIntPoint Coords(VoxelWorldLocation.X / ChunkSize, VoxelWorldLocation.Y / ChunkSize);
 	AVoxelChunk* Chunk = GetVoxelChunk(Coords);
@@ -170,8 +219,44 @@ EVoxelType AVoxelWorld::GetVoxel(const FIntVector& VoxelWorldLocation)
 	return Chunk->GetVoxelFromWorldLocation(VoxelWorldLocation);
 }
 
-AVoxelChunk* AVoxelWorld::GetVoxelChunk(const FIntPoint& Coords)
+AVoxelChunk* AVoxelWorld::GetVoxelChunk(const FIntPoint& Coords) const
 {
 	const TObjectPtr<AVoxelChunk>* Found = Chunks.Find(Coords);
 	return Found ? Found->Get() : nullptr;
+}
+
+bool AVoxelWorld::SetVoxel(const FIntVector& VoxelWorldLocation, const EVoxelType VoxelType)
+{
+	if (!bWorldReady || VoxelWorldLocation.X < 0 || VoxelWorldLocation.Y < 0 ||
+		VoxelWorldLocation.Z < 0 || VoxelWorldLocation.Z >= ChunkHeight)
+	{
+		return false;
+	}
+
+	AVoxelChunk* EditedChunk = GetVoxelChunk(
+		FIntPoint(VoxelWorldLocation.X / ChunkSize, VoxelWorldLocation.Y / ChunkSize));
+	if (!EditedChunk || !EditedChunk->SetVoxelFromWorldLocation(VoxelWorldLocation, VoxelType))
+	{
+		return false;
+	}
+
+	EditedChunk->RefreshVoxelInstance(VoxelWorldLocation);
+	for (const FIntVector& Direction : Directions)
+	{
+		const FIntVector NeighborLocation = VoxelWorldLocation + Direction;
+		if (NeighborLocation.X < 0 || NeighborLocation.Y < 0 ||
+			NeighborLocation.Z < 0 || NeighborLocation.Z >= ChunkHeight)
+		{
+			continue;
+		}
+
+		if (AVoxelChunk* NeighborChunk = GetVoxelChunk(
+			FIntPoint(NeighborLocation.X / ChunkSize, NeighborLocation.Y / ChunkSize)))
+		{
+			NeighborChunk->RefreshVoxelInstance(NeighborLocation);
+		}
+	}
+
+	OnVoxelChanged.Broadcast(VoxelWorldLocation, VoxelType);
+	return true;
 }
